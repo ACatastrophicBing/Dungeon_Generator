@@ -19,7 +19,16 @@ class FloorBuilder():
         self._space = pymunk.Space()
         self._space.gravity = 0, 0 # To allow for body objects to float in space
         self.pre_physics_rooms = []
-        self._bodies = []
+        self._bodies = []  # The actual bodies
+        self._bodies_shape = []  # The Poly / shape of the object
+
+        # Room selection process
+        self._bodies_area = []  # Area of each body to help with fitness and room selection
+        self._bodies_fitness = []  # Fitness equation for uniformly selecting best rooms at random
+        self._rooms_to_select = 0  # How many rooms the dungeon has
+        self._fitness_multiplier = 2  # How askew to area of body / selection of rooms
+        self._rooms_selected = []  # Which rooms were selected to exist
+
 
         # Physics Engine Time info
         # Time Step
@@ -67,9 +76,11 @@ class FloorBuilder():
         The base floor builder, builds a medium dungeon with the avg 4x4 square size room
         :return: A built floor
         """
-        self.baseCircleBuild(100,5)
+        self.baseCircleBuild(70,5)
         self.generateBossRoom(7,1.2)
+        self._rooms_to_select = 5 # Excludes the boss room, which should be the last added
         self.expansionSelectionSim()
+
         return self._space
 
     def baseCircleBuild(self,numRooms, circleRadius):
@@ -94,6 +105,11 @@ class FloorBuilder():
         self.pre_physics_rooms = rooms
 
     def generateBossRoom(self,max_size,circleRadius):
+        """
+        :param max_size: Maximum size of the boss room
+        :param circleRadius: How far out / close in to the center of the dungeon I want the boss room to be
+        :return: Returns nada
+        """
         rand_size_x = int(random.normal(loc=max_size, scale=2.5))
         if rand_size_x < 2:
             rand_size_x = 2
@@ -106,6 +122,8 @@ class FloorBuilder():
         pos_y = math.sin(rand_theta) * rand_rad + self._screen_height / 2
         self.pre_physics_rooms.append([rand_size_x, rand_size_y, pos_x, pos_y])
 
+
+
     def expansionSelectionSim(self):
         """
         Uses the pre_physics_rooms of the program to expand and select the rooms of the dungeon
@@ -113,6 +131,7 @@ class FloorBuilder():
 
         :return: The fully generated map
         """
+        # Room and physics space creation
         rooms_simulated = []
         for room in self.pre_physics_rooms:
             curr_room = pymunk.Body()
@@ -122,13 +141,54 @@ class FloorBuilder():
             physics_box.mass = (room[0] ** 2 + room[1] ** 2) ** (1/2) # To let the bigger boxes push things easier, but not too much
             self._space.add(curr_room,physics_box) # Adds the object to the physics space
             self._bodies.append(curr_room)
+            self._bodies_shape.append(physics_box)
+            self._bodies_area.append(room[0]*room[1])
             rooms_simulated.append([pymunk.body, physics_box])
-        #TODO: Run the simulation
-        self.showDungeonGeneration(10)
-        sim_running = True
-        while sim_running:
-            sim_running = False
-        #TODO: Select the largest rooms like how I did the fitness in Genetic Algorithm assignment
+
+        # Runs the simulation til the stuff stops
+        self.showDungeonGeneration(5)
+
+        # Selection and Removal of rooms
+        fitness = [body ** self._fitness_multiplier for body in self._bodies_area[0:-2]]
+        fit_sum = sum(fitness)
+        prev_fit = 0
+        for body in fitness:
+            self._bodies_fitness.append(body / fit_sum + prev_fit)
+            prev_fit = prev_fit + body / fit_sum
+
+        # Use uniform distribution and
+        for num_selection in range(self._rooms_to_select):
+            selection = random.uniform(low=0, high=1)
+            for fit in self._bodies_fitness:
+                if fit >= selection and self._bodies_fitness.index(fit) not in self._rooms_selected:
+                    print(f"Selected {self._bodies_fitness.index(fit)}")
+                    self._rooms_selected.append(self._bodies_fitness.index(fit))
+                    break
+
+        self._rooms_selected.append(len(self._bodies_area) - 1)
+
+        bodies_to_remove = [room for room in self._bodies if self._bodies.index(room) not in self._rooms_selected]
+        poly_to_remove = [room for room in self._bodies_shape if self._bodies_shape.index(room) not in self._rooms_selected]
+
+        # Update the current listing of bodies and all following info to be able to edit info in the future
+        for i in range(len(self._bodies), 0, -1):
+            if i not in self._rooms_selected:
+                self._bodies.pop(i)
+                self._bodies_fitness.pop(i)
+                self._bodies_shape.pop(i)
+                self._bodies_area.pop(i)
+
+        for room in range(len(bodies_to_remove)):
+            self._space.remove(bodies_to_remove[room],poly_to_remove[room])
+
+        # TODO: Expanding room sizes by 1 extra cell, running sim, then returning back to how it previously was
+        for room_num in range(len(self._bodies)):
+            # Do thing
+            self._bodies_shape[room_num].
+
+        # Show final room product
+        self.showDungeonGeneration(5)
+
         static_rooms = []
         return static_rooms
 
@@ -136,6 +196,7 @@ class FloorBuilder():
         for bodies in self._bodies:
             bodies.angular_velocity = 0
             bodies.angle = 0
+
     def showDungeonGeneration(self, run_seconds):
         startTime = time.time()
         curr_time = time.time()
