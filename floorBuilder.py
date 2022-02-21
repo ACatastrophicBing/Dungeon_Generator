@@ -21,6 +21,7 @@ class FloorBuilder():
         self.pre_physics_rooms = []
         self._bodies = []  # The actual bodies
         self._bodies_shape = []  # The Poly / shape of the object
+        self._bodies_x_y = []
 
         # Room selection process
         self._bodies_area = []  # Area of each body to help with fitness and room selection
@@ -34,7 +35,7 @@ class FloorBuilder():
         # Time Step
         self._dt = 1.0 / 60.0
         # Number of physics steps per screen frame
-        self._physics_steps_per_frame = 10
+        self._physics_steps_per_frame = 1
 
 
         # pygame viewing info
@@ -143,6 +144,7 @@ class FloorBuilder():
             self._bodies.append(curr_room)
             self._bodies_shape.append(physics_box)
             self._bodies_area.append(room[0]*room[1])
+            self._bodies_x_y.append([room[0], room[1]])
             rooms_simulated.append([pymunk.body, physics_box])
 
         # Runs the simulation til the stuff stops
@@ -156,35 +158,52 @@ class FloorBuilder():
             self._bodies_fitness.append(body / fit_sum + prev_fit)
             prev_fit = prev_fit + body / fit_sum
 
-        # Use uniform distribution and
+        # Use uniform distribution and select the rooms
         for num_selection in range(self._rooms_to_select):
             selection = random.uniform(low=0, high=1)
             for fit in self._bodies_fitness:
                 if fit >= selection and self._bodies_fitness.index(fit) not in self._rooms_selected:
-                    print(f"Selected {self._bodies_fitness.index(fit)}")
+                    # print(f"Selected {self._bodies_fitness.index(fit)}")
                     self._rooms_selected.append(self._bodies_fitness.index(fit))
                     break
 
         self._rooms_selected.append(len(self._bodies_area) - 1)
 
-        bodies_to_remove = [room for room in self._bodies if self._bodies.index(room) not in self._rooms_selected]
-        poly_to_remove = [room for room in self._bodies_shape if self._bodies_shape.index(room) not in self._rooms_selected]
+        # bodies_to_remove = [room for room in self._bodies if self._bodies.index(room) not in self._rooms_selected]
+        # poly_to_remove = [room for room in self._bodies_shape if self._bodies_shape.index(room) not in self._rooms_selected]
+
+        # Remove all bodies from space to have a blank slate, but keep all the data in _bodies and _bodies_shape
+        for room in range(len(self._bodies)):
+            self._space.remove(self._bodies[room],self._bodies_shape[room])
 
         # Update the current listing of bodies and all following info to be able to edit info in the future
-        for i in range(len(self._bodies), 0, -1):
+        for i in range(len(self._bodies)-1, 0, -1):
             if i not in self._rooms_selected:
                 self._bodies.pop(i)
-                self._bodies_fitness.pop(i)
                 self._bodies_shape.pop(i)
                 self._bodies_area.pop(i)
 
-        for room in range(len(bodies_to_remove)):
-            self._space.remove(bodies_to_remove[room],poly_to_remove[room])
+        print(self._bodies[0].position)
 
         # TODO: Expanding room sizes by 1 extra cell, running sim, then returning back to how it previously was
+        placeholder = []
+        body_copy = self._bodies.copy()
+        for room_num in range(len(body_copy)):
+            # Get vertices. clone, expand, place in same spot, finish
+            width, height = self._bodies_x_y[room_num]
+            print(f"Width {width}, Height {height}")
+            vertices = [(-width / 2 - 3, -height / 2 - 3), (width / 2 + 3, -height / 2 - 3), (-width / 2 - 3, height / 2 + 3), (width / 2 + 3, height / 2 + 3)]
+            physics_box = pymunk.Poly(body_copy[room_num], vertices)
+            physics_box.mass = (width ** 2 + height ** 2) ** (2)
+            placeholder.append(physics_box)
+            self._space.add(body_copy[room_num], physics_box)
+
+        self.showDungeonGeneration(5)
         for room_num in range(len(self._bodies)):
-            # Do thing
-            self._bodies_shape[room_num].
+            new_pos = body_copy[room_num].position
+            self._bodies[room_num].position = new_pos
+            self._space.remove(body_copy[room_num], placeholder[room_num])
+            self._space.add(self._bodies[room_num], self._bodies_shape[room_num])
 
         # Show final room product
         self.showDungeonGeneration(5)
