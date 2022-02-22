@@ -35,7 +35,7 @@ class FloorBuilder():
         # Time Step
         self._dt = 1.0 / 60.0
         # Number of physics steps per screen frame
-        self._physics_steps_per_frame = 1
+        self._physics_steps_per_frame = 30
 
 
         # pygame viewing info
@@ -148,7 +148,7 @@ class FloorBuilder():
             rooms_simulated.append([pymunk.body, physics_box])
 
         # Runs the simulation til the stuff stops
-        self.showDungeonGeneration(5)
+        self.showDungeonGeneration(1)
 
         # Selection and Removal of rooms
         fitness = [body ** self._fitness_multiplier for body in self._bodies_area[0:-2]]
@@ -163,14 +163,10 @@ class FloorBuilder():
             selection = random.uniform(low=0, high=1)
             for fit in self._bodies_fitness:
                 if fit >= selection and self._bodies_fitness.index(fit) not in self._rooms_selected:
-                    # print(f"Selected {self._bodies_fitness.index(fit)}")
                     self._rooms_selected.append(self._bodies_fitness.index(fit))
                     break
 
         self._rooms_selected.append(len(self._bodies_area) - 1)
-
-        # bodies_to_remove = [room for room in self._bodies if self._bodies.index(room) not in self._rooms_selected]
-        # poly_to_remove = [room for room in self._bodies_shape if self._bodies_shape.index(room) not in self._rooms_selected]
 
         # Remove all bodies from space to have a blank slate, but keep all the data in _bodies and _bodies_shape
         for room in range(len(self._bodies)):
@@ -182,23 +178,25 @@ class FloorBuilder():
                 self._bodies.pop(i)
                 self._bodies_shape.pop(i)
                 self._bodies_area.pop(i)
+                self._bodies_x_y.pop(i)
 
         print(self._bodies[0].position)
 
-        # TODO: Expanding room sizes by 1 extra cell, running sim, then returning back to how it previously was
+        # Expanding room sizes by 1 extra cell, running sim, then returning back to how it previously was
         placeholder = []
         body_copy = self._bodies.copy()
         for room_num in range(len(body_copy)):
             # Get vertices. clone, expand, place in same spot, finish
             width, height = self._bodies_x_y[room_num]
             print(f"Width {width}, Height {height}")
-            vertices = [(-width / 2 - 3, -height / 2 - 3), (width / 2 + 3, -height / 2 - 3), (-width / 2 - 3, height / 2 + 3), (width / 2 + 3, height / 2 + 3)]
+            vertices = [(-width / 2 - 2, -height / 2 - 2), (width / 2 + 2, -height / 2 - 2), (-width / 2 - 2, height / 2 + 2), (width / 2 + 2, height / 2 + 2)]
             physics_box = pymunk.Poly(body_copy[room_num], vertices)
             physics_box.mass = (width ** 2 + height ** 2) ** (2)
             placeholder.append(physics_box)
             self._space.add(body_copy[room_num], physics_box)
 
-        self.showDungeonGeneration(5)
+        self.showDungeonGeneration(1)
+
         for room_num in range(len(self._bodies)):
             new_pos = body_copy[room_num].position
             self._bodies[room_num].position = new_pos
@@ -206,7 +204,7 @@ class FloorBuilder():
             self._space.add(self._bodies[room_num], self._bodies_shape[room_num])
 
         # Show final room product
-        self.showDungeonGeneration(5)
+        self.showDungeonGeneration(1)
 
         static_rooms = []
         return static_rooms
