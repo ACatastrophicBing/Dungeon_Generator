@@ -5,10 +5,13 @@ from multimethod import multimethod
 import pygame
 import pymunk.pygame_util
 import time
+from scipy.spatial import Delaunay
+from scipy.sparse import csr_matrix
+from scipy.sparse.csgraph import minimum_spanning_tree
 
 """
 Each cell is a size of 5 ft,
-A cell is a wall or not walkable if true, a cell is open if false 
+1's signifying a room, 0.5 signifying a corridor, 0's signifying a wall, and -1's signifying the boss room
 """
 class FloorBuilder():
     def __init__(self):
@@ -29,6 +32,7 @@ class FloorBuilder():
         self._rooms_to_select = 0  # How many rooms the dungeon has
         self._fitness_multiplier = 2  # How askew to area of body / selection of rooms
         self._rooms_selected = []  # Which rooms were selected to exist
+        self._traproom_probability = 0.01
 
 
         # Physics Engine Time info
@@ -39,8 +43,9 @@ class FloorBuilder():
 
 
         # pygame viewing info
-        self._screen_width = 100
-        self._screen_height = 100
+        self._dungeon_size = [100, 100]
+        self._screen_width = self._dungeon_size[0]
+        self._screen_height = self._dungeon_size[1]
         pygame.init()
         self._screen = pygame.display.set_mode((self._screen_width, self._screen_height))
         self._clock = pygame.time.Clock()
@@ -55,8 +60,8 @@ class FloorBuilder():
         :param size_string: The size of the dungeon as a string (tiny, small, medium, large, chonky)
         :param type: what type of dungeon is it? This comes into play with the generation of the shape the rooms are
         generated in
-        :return: A built floor as a 2D list of a list containing an int of if the cell is occupied or not (boolean)
-        Boolean is true if wall, false if open
+        :return: A built floor as a 2D list of a list containing an int of if the cell is occupied or not
+        1's signifying a room, 0.5 signifying a corridor, 0's signifying a wall, and -1's signifying the boss room
         """
         built_floor = []
         return built_floor
@@ -66,8 +71,8 @@ class FloorBuilder():
         Builds a floor with a size type and returns a built floor
         :param cell_max: The size of the dungeon to make a cell_max by cell_max size
         :param room_size: The avg size of a room in cells
-        :return: A built floor as a 2D list of a list containing an int of if the cell is occupied or not (boolean)
-        Boolean is true if wall, false if open
+        :return: A built floor as a 2D list of a list containing an int of if the cell is occupied or not
+        1's signifying a room, 0.5 signifying a corridor, 0's signifying a wall, and -1's signifying the boss room
         """
         built_floor = []
         return built_floor
@@ -81,8 +86,8 @@ class FloorBuilder():
         self.generateBossRoom(7,1.2)
         self._rooms_to_select = 5 # Excludes the boss room, which should be the last added
         self.expansionSelectionSim()
-
-        return self._space
+        self.delaunayTriangulation()
+        return [] # Returns array of map
 
     def baseCircleBuild(self,numRooms, circleRadius):
         """
@@ -208,6 +213,65 @@ class FloorBuilder():
 
         static_rooms = []
         return static_rooms
+
+    def delaunayTriangulation(self):
+        """
+        Uses the self features and returns a finished map with all rooms connected to each other, boss room hopefully
+        connected last
+        :return: An array of 1's signifying a room, 0.5 signifying a corridor, 0's signifying a wall, and -1's signifying the boss room
+        2 is a trap room
+        """
+        # TODO: Make a function to snap each room to cells, and also get their center
+        snapped_grid = [[0] * math.ceil(math.sqrt(self._dungeon_size[0]**2 + self._dungeon_size[1]**2))] * math.ceil(math.sqrt(self._dungeon_size[0]**2 + self._dungeon_size[1]**2))
+        delaunay_points = []
+        for room in range(len(self._bodies)):
+            curr_loc = self._space.bodies[room].position
+            delaunay_points.append([math.floor(curr_loc[0]), math.floor(curr_loc[1])]) # Append the 'centroid' cell of the room to the delauney point thing
+            curr_room_world_verteces = []
+            for vert in self._bodies_shape[room].get_vertices():
+                curr_room_world_verteces.append([math.floor(curr_loc[0] + vert[0]), math.floor(curr_loc[1] + vert[1])])
+            # Set the room values to 1 if a room, 2 if trap room, -1 boss room (last room added)
+            # now need to set the values in the snapped grid to their correct numbers
+            for i in range(abs(curr_room_world_verteces[0][0] - curr_room_world_verteces[3][0])):
+                for k in range(abs(curr_room_world_verteces[0][1] - curr_room_world_verteces[3][1])):
+                    if room == self._bodies[-1]:
+                        snapped_grid[curr_room_world_verteces[0][0] + i][curr_room_world_verteces[0][1] + k] = -1
+                    else:
+                        if self._traproom_probability < random.random():
+                            snapped_grid[curr_room_world_verteces[0][0] + i][curr_room_world_verteces[0][1] + k] = 2
+                        else:
+                            snapped_grid[curr_room_world_verteces[0][0] + i][curr_room_world_verteces[0][1] + k] = 1
+
+
+            # TODO: Using the points found above, use delaunay's algorithm to create connections between rooms
+        # non_boss_delauynay = delaunay_points[1:-2]
+        map_connections = Delaunay(delaunay_points)
+        print(map_connections)
+        print(type(map_connections))
+        print(f"Points : {map_connections.points}")
+        print(f"Neighbors : {map_connections.neighbors}")
+        csr_style = []
+        num_neighbors = len(map_connections.neighbors)
+        for i in range(num_neighbors): # Get a n x n matrix of all the neighbors ? Or Do I instead convert it into a csgraph
+            #CSR style
+            curr_row = [0] * num_neighbors
+            for j in map_connections.neighbors[i]:
+                if j != -1:
+                    if j == num_neighbors - 1 or i == num_neighbors - 1:
+                        curr_row[j] = 20
+                    else:
+                        curr_row[j] = j*2 + 1
+            csr_style.append(curr_row)
+
+        map_node_connections = csr_matrix(csr_style)
+        print(csr_style)
+        map_connections = minimum_spanning_tree(map_node_connections) # Probably doesn't work since its not the correct input type
+        print(f"Minimum spanning tree? {map_connections}")
+
+        # TODO: Using the connections found above, path plan from each node to each node with a heuristic based on
+        # not connecting to another room and giving a bonus for using the same corridor / path, as wel as straight halls
+
+
 
     def angularVelocityLimiter(self):
         for bodies in self._bodies:
